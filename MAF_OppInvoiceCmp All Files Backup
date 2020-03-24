@@ -1,0 +1,380 @@
+
+========================COMPONENT=============================
+
+
+<aura:component implements="force:appHostable,flexipage:availableForAllPageTypes,force:hasRecordId,flexipage:availableForRecordHome,forceCommunity:availableForAllPageTypes,force:lightningQuickActionWithoutHeader" 
+                access="global" 
+                controller="MAF_OppInvoiceController">
+    
+    <!-- attributes -->
+    <ltng:require styles="{!$Resource.MAFInvoiceCSS}"/>
+    <aura:attribute name="data" type="Object"/>
+    <aura:attribute name="columns" type="List"/>
+    <aura:attribute name="recordId" type="String"/>
+    <aura:attribute name="showSpinner" type="boolean" default="false"/>	 
+    <aura:attribute type="Receipt_Installment__c[]" name="InvoiceRecords"/>
+    <aura:attribute name="invoiceWrp" type="MAF_OppInvoiceController.OppInvoiceWrapper[]" />
+    <aura:attribute name="selectedRows" type="List" />
+    <aura:attribute name="draftValues" type="Object" default="[]"/>
+    <aura:attribute name="showCreditMemobutton" type="Boolean" default="false"/>
+    <!-- handlers-->
+    <aura:handler name="init" value="{! this }" action="{! c.init }"/>
+    
+     <aura:html tag="style">
+        .cuf-content {
+        padding: 0 0rem !important;
+        }
+        .slds-p-around--medium {
+        padding: 0rem !important;
+        }
+        .slds-modal__content {
+        overflow-y: hidden !important;
+         height: unset !important;
+        max-height: unset !important;
+        }
+        .slds-modal__container{
+        max-width: 70rem !important;
+        width:67% !important;
+        }  
+        
+    </aura:html>
+    
+    <article class="slds-card">
+        <aura:if isTrue="{!v.showSpinner}">
+            <div class="exampleHolder">
+                <lightning:spinner alternativeText="Loading" size="large" />
+            </div>
+        </aura:if>
+        <!-- the container element determine the height of the datatable -->
+        <div class="modal-header slds-modal__header slds-size_1-of-1">
+            <h4 class="title slds-text-heading--medium" >Create Credit Memo</h4>
+        </div>
+        
+        <div class="modal-body  slds-scrollable" style="height: 300px; max-height: 400px;" >
+          <!--  <lightning:datatable
+                                 keyField="id"
+                                 data="{! v.data }"
+                                 columns="{! v.columns }"
+                                 hideCheckboxColumn="true"/> -->
+            <lightning:datatable
+                                 columns="{! v.columns }"
+                                 data="{! v.invoiceWrp }"
+                                 keyField="Id"
+                                 aura:id="linesTable"
+                                 showRowNumberColumn="true"
+                                 draftValues="{! v.draftValues }"
+                                 onsave="{! c.handleSave }"
+                                 onrowselection="{!c.handleSelect}"
+                                 />
+        </div>
+        
+    </article>
+   <!-- <aura:if isTrue="{!not(empty(v.invoiceWrp))}">
+        <div  align="center" class="my-custom-background">
+            <lightning:button label="Create Credit Memo" disabled="{!v.showCreditMemobutton}" title="Create Credit Memo" variant="brand" onclick="{!c.createCreditMemo}"/>
+            
+        </div>
+    </aura:if> -->
+    <div class="slds-col modal-footer slds-modal__footer">
+        <div >
+            <aura:if isTrue="{!not(empty(v.invoiceWrp))}">
+                 <lightning:button  variant="brand" label="Create Credit Memo" title="Create Credit Memo"
+                                   disabled="{!v.showCreditMemobutton}" onclick="{!c.createCreditMemo}" />
+                    
+            </aura:if>
+             <lightning:button  label="Cancel" title="Cancel" onclick="{!c.handleCancel}" />  
+        </div>
+    </div>
+</aura:component>
+
+=========================controller.js=================
+
+({
+    init: function (component, event, helper) {
+        
+        component.set("v.showSpinner",true); 
+        var oppRecordId = component.get('v.recordId');
+        // alert('oppRecordId = '+oppRecordId);
+        var action = component.get("c.getReceiptInsRecords");
+        action.setParams({ 
+            oppId: oppRecordId
+        });
+        action.setCallback(this, function(response) {
+            
+            console.log('Response returned');
+            var state = response.getState();
+            if (state === "SUCCESS") {
+                var retrurnValue = response.getReturnValue();
+                component.set("v.invoiceWrp", retrurnValue);
+                component.set("v.showSpinner",false); 
+            }
+            else if (state === "ERROR") {
+                var errors = response.getError();
+                if (errors) {
+                    if (errors[0] && errors[0].message) {
+                        console.log("Error message: " + 
+                                    errors[0].message);
+                        alert('Something went wrong. Please contact your system admin with error message :  '+errors[0].message);
+                        component.set("v.showSpinner",false); 
+                    }
+                } else {
+                    console.log("Unknown error");
+                }
+                
+            }
+            
+        });
+        
+        $A.enqueueAction(action);
+        
+        component.set('v.columns', [
+            {label: 'Invoice No', fieldName: 'Invoice_No', type: 'text'},
+            {label: 'Invoice Date', fieldName: 'Invoice_Date', type: 'Date'},
+            {label: 'Purpose(MileStone /Non Mile Stone)', fieldName: 'Milestone', type: 'text'},
+            {label: 'Currency Code', fieldName: 'Currency_ISO_Code', type: 'text'},
+            {label: 'Ar Type', fieldName: 'Ar_Type', type: 'text'},
+            {label: 'Writeoff Amount',  fieldName: 'Writeoff_Amount', type: 'text',editable : 'true'},
+            {label: 'Finance Comments',  fieldName: 'Finance_Comments', type: 'text',editable : 'true'}
+        ]);
+        
+    },
+    handleSelect : function(component, event, helper){
+        
+        var selectedRows = event.getParam('selectedRows');
+        var setRows = [];
+        for ( var i = 0; i < selectedRows.length; i++ ) {
+            setRows.push(selectedRows[i]);
+        }
+        component.set("v.selectedRows", setRows);
+        
+    },
+    
+    createCreditMemo : function(component, event, helper){
+        helper.createCreditMemoHelper(component, event, helper);
+    },
+    handleSave: function(component, event, helper){
+        helper.handleSaveHelper(component, event, helper);
+        
+    },
+    handleCancel:function(component, event, helper){
+        var dismissActionPanel = $A.get("e.force:closeQuickAction");
+        dismissActionPanel.fire();
+    }
+});
+
+=====================helper============================================
+({
+	createCreditMemoHelper : function(component, event, helper){
+		
+         var InvoiceRecords = component.get("v.selectedRows");
+        console.log('InvoiceRecords = '+JSON.stringify(InvoiceRecords));
+        if ($A.util.isUndefinedOrNull(InvoiceRecords) || $A.util.isEmpty(InvoiceRecords)){
+          this.showToast('Error','Please select Row Before Creating Credit Memo!');
+            
+        }else{
+            var oppRecordId = component.get('v.recordId');
+            var action = component.get("c.createCreditMemoRecords");
+            action.setParams({ 
+                InvoiceRecords : InvoiceRecords,
+                opportunityId : oppRecordId
+            });
+            action.setCallback(this, function(response) {
+                
+                var state = response.getState();
+                if (state === "SUCCESS") {
+                    var retrurnValue = response.getReturnValue();
+                    if(retrurnValue){ 
+                        this.showToast('Success','Records created SuccessFully!');
+                        component.set("v.showSpinner",false); 
+                        var dismissActionPanel = $A.get("e.force:closeQuickAction");
+                        dismissActionPanel.fire();
+                    }
+                }
+                else if (state === "ERROR") {
+                    var errors = response.getError();
+                    if (errors) {
+                        if (errors[0] && errors[0].message) {
+                            console.log("Error message: " + 
+                                        errors[0].message);
+                            alert('Something went wrong. Please contact your system admin with error message :  '+errors[0].message);
+                            component.set("v.showSpinner",false); 
+                        }
+                    } else {
+                        console.log("Unknown error");
+                    }
+                    
+                }
+                
+            });
+            
+            $A.enqueueAction(action);
+            
+        }
+        
+	},
+    
+    handleSaveHelper : function(component, event, helper){
+        var InvoiceRecords = component.get("v.invoiceWrp");
+        var draftList = event.getParam('draftValues');
+        for (var item in draftList){
+            
+            InvoiceRecords[item].Writeoff_Amount = draftList[item].Writeoff_Amount;
+            InvoiceRecords[item].Finance_Comments = draftList[item].Finance_Comments;
+        }
+       this.showToast('Success','Table Updated SuccessFully!');
+    },
+    
+    showToast : function(type, message) {
+        var toastEvent = $A.get("e.force:showToast");
+        toastEvent.setParams({
+            "title": type + "!",
+            "type": type,
+            "message": message
+            
+        });
+        toastEvent.fire();
+    },
+})
+=====================Style===================================================
+
+.THIS .slds-docked-form-footer {
+    box-shadow: 0px 0px !important;
+    background:white !important;
+    bottom: 10px !important;
+}
+ 
+.THIS.exampleHolder{
+    position: relative;
+    display: inline-block;
+    width: 80px;
+    height: 80px;
+}
+=====================Apex controller====================================
+
+public class MAF_OppInvoiceController {
+    
+    
+    static  List<OppInvoiceWrapper> OppInvoicewrapperList = new List<OppInvoiceWrapper>();
+    
+    
+    @auraEnabled
+    public static List<OppInvoiceWrapper> getReceiptInsRecords(string oppId){
+        
+        Map<String, Transaction_Type__c> purpose_arName_Map = new Map<String,Transaction_Type__c>();
+        string opportunityID = '';
+        
+        opportunityID = oppId;
+        List<Invoice__c> invoiceList = [ SELECT Id,Name,CurrencyIsoCode, Due_Date__c,Instalment__c,Instalment__r.Name,  Instalment__r.Remaining_Amount__c,Instalment__r.Payment_Status__c,  Opportunity_Charge__c, Opportunity_Charge__r.Name,Opportunity_Charge__r.Payment_Status__c,  Opportunity_Charge__r.Pending_Amount__c  
+                                        FROM Invoice__c 
+                                        WHERE Instalment__r.Opportunity__c =:oppId 
+                                        OR Opportunity_Charge__r.Opportunity__c =:oppId];
+        
+        String oppPhaseId=[select id,phase__c from opportunity where id=:oppId].phase__c;
+        system.debug('oppPhaseId = '+oppPhaseId);
+        List<Transaction_Type__c> arListForPhase = [SELECT Id,Name, Purpose__c, Type__c
+                                                    FROM Transaction_Type__c
+                                                    WHERE Phase__c =:oppPhaseId AND Type__c='Credit Memo' AND RecordType.Name='AR Transaction Type'];
+        
+        system.debug('arListForPhase = '+arListForPhase);
+        for(Transaction_Type__c arTypeItem : arListForPhase){
+            purpose_arName_Map.put(arTypeItem.Purpose__c,arTypeItem);
+        }
+        system.debug('purpose_arName_Map = '+purpose_arName_Map);
+        for(Invoice__c recp : invoiceList){
+            
+            if(recp.Instalment__c != null){
+                OppInvoicewrapperList.add(new OppInvoiceWrapper(recp.Id,recp.Name,recp.Due_Date__c,recp.Instalment__r.Name,recp.Instalment__r.Remaining_Amount__c,recp.CurrencyIsoCode,purpose_arName_Map.get('Sales').Name,purpose_arName_Map.get('Sales').Id));
+            }else if(recp.Opportunity_Charge__c != null){
+                String ARTypeName = '';
+                if(recp.Opportunity_Charge__r.Name =='Reservation Fee'){
+                    ARTypeName = 'Reservation';
+                }else if(recp.Opportunity_Charge__r.Name.contains('LPF')){
+                    ARTypeName = 'LPF';
+                }else if(recp.Opportunity_Charge__r.Name =='Admin Fee/NOC'){
+                    ARTypeName = 'NOC/Admin';
+                }else if(recp.Opportunity_Charge__r.Name =='Advance Tax Receipt'){
+                    ARTypeName = 'Advance Tax';
+                }
+                OppInvoicewrapperList.add(new OppInvoiceWrapper(recp.Id,recp.Name,recp.Due_Date__c,recp.Opportunity_Charge__r.Name,recp.Opportunity_Charge__r.Pending_Amount__c,recp.CurrencyIsoCode,purpose_arName_Map.get('ARTypeName').Name,purpose_arName_Map.get('ARTypeName').Id));
+                
+            }
+        }
+        return OppInvoicewrapperList;
+    }
+    
+    
+    public class OppInvoiceWrapper{
+        @auraEnabled public String Invoice_Id{get;set;}	
+        @auraEnabled public String Invoice_No{get;set;}	
+        @auraEnabled public Date Invoice_Date{get;set;}	
+        @auraEnabled public String Milestone{get;set;}	
+        @auraEnabled public Decimal Pending_Amount{get;set;}	
+        @auraEnabled public String Currency_ISO_Code{get;set;}	
+        @auraEnabled public String Ar_Type{get;set;}
+        @auraEnabled public String Ar_Type_Id{get;set;}	
+        @auraEnabled public String Writeoff_Amount{get;set;}	
+        @auraEnabled public String Finance_Comments{get;set;}	
+        
+        public OppInvoiceWrapper(){
+        }
+        
+        public OppInvoiceWrapper(String Invoice_Id,String Invoice_No,Date Invoice_Date,String Milestone,Decimal Pending_Amount,String Currency_ISO_Code,String Ar_Type,String Ar_Type_Id){
+            this.Invoice_Id = Invoice_Id;
+            this.Invoice_No = Invoice_No;
+            this.Invoice_Date = Invoice_Date;
+            this.Milestone = Milestone;
+            this.Pending_Amount = Pending_Amount;
+            this.Currency_ISO_Code = Currency_ISO_Code;
+            this.Ar_Type = Ar_Type;
+            this.Ar_Type_Id = Ar_Type_Id;
+            this.Writeoff_Amount = '';
+            this.Finance_Comments = '';
+        }
+        
+    }
+    
+    @AuraEnabled
+    public static Boolean createCreditMemoRecords(List<OppInvoiceWrapper> InvoiceRecords,String opportunityId ){
+        List<Credit_Note__c> creditNoteList = new List<Credit_Note__c>();
+        system.debug('InvoiceRecords = '+InvoiceRecords);
+        system.debug('opportunityId = '+opportunityId);
+        Boolean returnValue = null ;
+        
+        for(OppInvoiceWrapper o : InvoiceRecords){ 
+            Credit_Note__c newCreditNote = new Credit_Note__c();
+            newCreditNote.Invoice__c = o.Invoice_Id;
+            if(!String.isBlank(o.Writeoff_Amount) || !String.isEmpty(o.Writeoff_Amount) ){
+                newCreditNote.Amount__c = Integer.valueOf(o.Writeoff_Amount);
+            }
+            newCreditNote.Opportunity__c = opportunityId;
+            newCreditNote.AR_Transaction_Type__c = o.Ar_Type_Id;
+            newCreditNote.Description__c = o.Finance_Comments;
+            
+            creditNoteList.add(newCreditNote);
+        }
+        system.debug('creditNoteList = '+creditNoteList);
+        Schema.SObjectField creditNoteId = Credit_Note__c.Fields.Id;
+        Database.upsertresult[] srList = Database.upsert(creditNoteList,creditNoteId, false);
+        
+        for (Database.upsertresult sr : srList) {
+            if (sr.isSuccess()) {
+                // Operation was successful, so get the ID of the record that was processed
+                System.debug('Successfully inserted credit Note. Credit Note ID: ' + sr.getId());
+                returnValue = true;
+            }
+            else {
+                // Operation failed, so get all errors                
+                for(Database.Error err : sr.getErrors()) {
+                    System.debug('The following error has occurred.');                    
+                    System.debug(err.getStatusCode() + ': ' + err.getMessage());
+                    System.debug('Credit Note fields that affected this error: ' + err.getFields());
+                    returnValue = false;
+                }
+            }
+        }
+        system.debug('returnValue = '+returnValue);
+        return returnValue;
+        
+    }
+    
+}
